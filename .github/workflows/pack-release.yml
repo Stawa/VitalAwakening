@@ -20,12 +20,21 @@ jobs:
         shell: pwsh
 
       - name: Create output directory
-        run: mkdir output
+        run: mkdir output -Force
         shell: pwsh
 
       - name: Create ZIP file
         run: |
-          Compress-Archive -Path "assets","pack.mcmeta" -DestinationPath "output/VitalAwakening_${{ steps.get_version.outputs.VERSION }}.zip"
+          Compress-Archive -Path "assets","pack.mcmeta" -DestinationPath "output/VitalAwakening_${{ steps.get_version.outputs.VERSION }}.zip" -Force
+        shell: pwsh
+
+      - name: Commit and push changes
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add output/
+          git commit -m "Update v${{ steps.get_version.outputs.VERSION }} [skip ci]"
+          git push
         shell: pwsh
 
       - name: Upload artifact
