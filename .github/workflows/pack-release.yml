@@ -1,0 +1,41 @@
+name: Create Resource Pack ZIP
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Get Version
+        id: get_version
+        run: |
+          $version = Get-Content version.txt
+          echo "VERSION=$version" >> $env:GITHUB_OUTPUT
+        shell: pwsh
+
+      - name: Create output directory
+        run: mkdir output
+        shell: pwsh
+
+      - name: Create ZIP file
+        run: |
+          Compress-Object -Path "assets","pack.mcmeta" -DestinationPath "output/VitalAwakening_${{ steps.get_version.outputs.VERSION }}.zip"
+        shell: pwsh
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: VitalAwakening_${{ steps.get_version.outputs.VERSION }}
+          path: output/VitalAwakening_${{ steps.get_version.outputs.VERSION }}.zip
+
+      - name: Create Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v1
+        with:
+          files: output/VitalAwakening_${{ steps.get_version.outputs.VERSION }}.zip
