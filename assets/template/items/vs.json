@@ -1,10 +1,6 @@
 {
   "model": {
     "type": "minecraft:model",
-    "model": "template:item/vs",
-    "fallback": {
-      "type": "minecraft:model",
-      "model": "minecraft:item/totem_of_undying"
-    }
+    "model": "template:item/vs"
   }
 }

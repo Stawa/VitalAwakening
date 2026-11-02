@@ -3,6 +3,8 @@ name: Create Resource Pack ZIP
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - "output/**"
   workflow_dispatch:
 
 permissions:
@@ -10,37 +12,89 @@ permissions:
 
 jobs:
   build:
-    runs-on: windows-latest
+    runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v4
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Get Version
         id: get_version
-        run: |
-          $version = Get-Content version.txt
-          echo "VERSION=$version" >> $env:GITHUB_OUTPUT
-        shell: pwsh
+        run: echo "VERSION=$(tr -d '\r\n' < version.txt)" >> "$GITHUB_OUTPUT"
 
-      - name: Create output directory
-        run: mkdir output -Force
-        shell: pwsh
+      - name: Validate pack
+        run: |
+          python3 - <<'EOF'
+          import json, os, sys
+
+          errors = []
+
+          def load(path):
+              try:
+                  with open(path, encoding="utf-8") as f:
+                      return json.load(f)
+              except Exception as e:
+                  errors.append(f"{path}: {e}")
+
+          def tex_path(ref):
+              ns, _, p = ref.rpartition(":")
+              return f"assets/{ns or 'minecraft'}/textures/{p}.png"
+
+          def model_path(ref):
+              ns, _, p = ref.rpartition(":")
+              return f"assets/{ns or 'minecraft'}/models/{p}.json"
+
+          load("pack.mcmeta")
+
+          for root, _, files in os.walk("assets"):
+              for name in files:
+                  path = os.path.join(root, name).replace("\\", "/")
+                  if not path.endswith(".json"):
+                      continue
+                  data = load(path)
+                  if "/models/" in path and isinstance(data, dict):
+                      textures = data.get("textures", {})
+                      for key, ref in textures.items():
+                          if not ref.startswith("#") and not os.path.exists(tex_path(ref)):
+                              errors.append(f"{path}: texture '{ref}' not found")
+                      for i, el in enumerate(data.get("elements", [])):
+                          for side, face in el.get("faces", {}).items():
+                              ref = face.get("texture", "")
+                              if ref.startswith("#") and ref[1:] not in textures:
+                                  errors.append(f"{path}: element {i} {side} uses undefined texture {ref}")
+                  if "/items/" in path and isinstance(data, dict):
+                      ref = data.get("model", {}).get("model")
+                      if ref and not os.path.exists(model_path(ref)):
+                          errors.append(f"{path}: model '{ref}' not found")
+
+          if errors:
+              print("\n".join(errors))
+              sys.exit(1)
+          print("Pack OK")
+          EOF
 
       - name: Create ZIP file
         run: |
-          Compress-Archive -Path "assets","pack.mcmeta" -DestinationPath "output/VitalAwakening_${{ steps.get_version.outputs.VERSION }}.zip" -Force
-        shell: pwsh
+          mkdir -p output
+          zip_file="output/VitalAwakening_${{ steps.get_version.outputs.VERSION }}.zip"
+          rm -f "$zip_file"
+          # Reproducible build: fixed mtimes, sorted entries, no extra attributes or
+          # directory entries, so an unchanged pack always produces an identical SHA-1.
+          find assets pack.mcmeta -type f -exec touch -d '2020-01-01 00:00:00 UTC' {} +
+          find assets pack.mcmeta -type f | LC_ALL=C sort | zip -X -D -9 -@ "$zip_file"
+          unzip -l "$zip_file"
+          sha1sum "$zip_file"
 
       - name: Commit and push changes
         run: |
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
           git add output/
-          git commit -m "Update v${{ steps.get_version.outputs.VERSION }} [skip ci]"
-          git push
-        shell: pwsh
+          if git diff --cached --quiet; then
+            echo "Pack unchanged, nothing to commit."
+          else
+            git commit -m "Update v${{ steps.get_version.outputs.VERSION }} [skip ci]"
+            git push
+          fi
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4

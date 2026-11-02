@@ -1,6 +1,9 @@
 {
   "pack": {
+    "description": "VitalStrike Resourcepack (VitalAwakening)!",
     "pack_format": 46,
-    "description": "VitalStrike Resourcepack (VitalAwakening)!"
+    "supported_formats": { "min_inclusive": 46, "max_inclusive": 97 },
+    "min_format": 46,
+    "max_format": 97
   }
 }
